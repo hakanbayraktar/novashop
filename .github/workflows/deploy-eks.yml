@@ -6,7 +6,6 @@ on:
     paths:
       - "src/ui/**"
       - "charts/novashop/**"
-      - ".github/workflows/deploy-eks.yml"
   workflow_dispatch:
 
 permissions:
