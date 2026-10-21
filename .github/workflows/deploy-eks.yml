@@ -1,0 +1,83 @@
+name: "02 - NovaShop EKS Uygulama Dağıtımı"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/ui/**"
+      - "charts/novashop/**"
+      - ".github/workflows/deploy-eks.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: novashop-eks-deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: eks-training
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
+      ECR_REPOSITORY: novashop-ui
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Birim testleri
+        working-directory: src/ui
+        run: ./mvnw test -B
+      - name: AWS OIDC kimlik doğrulaması
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: NovaShopDeploy
+      - name: Amazon ECR girişi
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      - name: UI image derle ve ECR'a gönder
+        env:
+          ECR_REGISTRY: ${{ steps.ecr.outputs.registry }}
+          IMAGE_TAG: sha-${{ github.sha }}
+        run: |
+          docker build --file src/ui/Dockerfile \
+            --tag "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" src/ui
+          docker push "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+      - name: kubectl ve Helm kur
+        uses: azure/setup-helm@v4
+      - name: EKS kubeconfig oluştur
+        run: aws eks update-kubeconfig --region "$AWS_REGION" --name "$CLUSTER_NAME"
+      - name: Helm ile dağıt
+        env:
+          ECR_REGISTRY: ${{ steps.ecr.outputs.registry }}
+          IMAGE_TAG: sha-${{ github.sha }}
+        run: |
+          helm upgrade --install novashop charts/novashop \
+            --namespace novashop --create-namespace \
+            --values charts/novashop/values-eks.yaml \
+            --set ui.image.repository="$ECR_REGISTRY/$ECR_REPOSITORY" \
+            --set ui.image.tag="$IMAGE_TAG" \
+            --wait --timeout 10m
+      - name: ALB adresini doğrula
+        run: |
+          for attempt in {1..30}; do
+            ALB_HOST=$(kubectl get ingress novashop-ingress -n novashop \
+              -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+            if [ -n "$ALB_HOST" ]; then
+              curl --fail --retry 5 "http://$ALB_HOST/actuator/health"
+              echo "ALB_URL=http://$ALB_HOST" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "ALB adresi zamanında atanmadı." >&2
+          exit 1
