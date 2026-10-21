@@ -27,9 +27,3 @@ variable "node_instance_type" {
   type        = string
   default     = "t3.small"
 }
-
-variable "github_actions_role_arn" {
-  description = "Existing GitHub OIDC IAM role ARN; this principal receives EKS access."
-  type        = string
-  sensitive   = true
-}

@@ -1,11 +1,6 @@
 name: 02 - NovaShop CI/CD Pipeline (Docker Hub & EC2 Deploy)
 
 on:
-  push:
-    branches: [ main ]
-    paths:
-      - 'src/ui/**'
-      - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
 permissions:

@@ -47,8 +47,9 @@ module "eks" {
   name               = local.name
   kubernetes_version = var.kubernetes_version
 
-  endpoint_public_access = true
-  enable_irsa            = true
+  endpoint_public_access                   = true
+  enable_irsa                              = true
+  enable_cluster_creator_admin_permissions = true
 
   vpc_id                   = module.vpc.vpc_id
   subnet_ids               = module.vpc.private_subnets
@@ -71,20 +72,6 @@ module "eks" {
 
       iam_role_additional_policies = {
         ecr_read = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
-      }
-    }
-  }
-
-  access_entries = {
-    github_actions = {
-      principal_arn = var.github_actions_role_arn
-      policy_associations = {
-        admin = {
-          policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
-          access_scope = {
-            type = "cluster"
-          }
-        }
       }
     }
   }
