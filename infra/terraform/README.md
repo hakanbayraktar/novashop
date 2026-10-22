@@ -57,26 +57,85 @@ Repository **Settings → Secrets and variables → Actions** bölümünde aşa�
 
 `EKS_CLUSTER_NAME`, `project=novashop` ve `environment=training` değerlerinden gelir. Bu değerleri değiştirirseniz workflow variable'ını da aynı isimle güncelleyin. Pluralsight ortamı büyük instance'lara izin vermediği için varsayılan node tipi `t3.small` seçilmiştir.
 
-## 3. Çalıştırma sırası
+## 3. Çalıştırma Sırası ve Sıfırdan Otomatik Kurulum (Clean Slate / Disaster Recovery)
 
-Laboratuvar adımları 3 sıralı iş akışından oluşur:
+Tüm altyapı, uygulamalar ve gözlemlenebilirlik araçları **%100 Kod Olarak Altyapı (IaC)** prensibiyle hazırlanmıştır. Ortam tamamen silinse (`destroy`) dahi, hiçbir manuel terminal/kubectl komutuna gerek kalmadan aşağıdaki 3 GitHub Actions iş akışı sırayla tetiklenerek sistem baştan sona kurulur:
 
-1. **`01 - EKS Altyapısı (Terraform)`**:
-   - AWS VPC, subnets, NAT Gateway, EKS Cluster (`novashop-training`) ve AWS Load Balancer Controller oluşturur.
-   - Önce `plan`, ardından `apply` seçeneğiyle çalıştırılır.
-2. **`02 - NovaShop EKS Uygulama Dağıtımı`**:
-   - UI imajını build edip ECR'a gönderir, Helm chart ile NovaShop 5 mikroservisini ayağa kaldırır.
-   - Paylaşımlı ALB Ingress üzerinde `novashop.devopsatolyesi.com` adresini tanımlar.
-3. **`03 - Monitoring & Logging Dağıtımı`**:
-   - Elasticsearch 9.x, Kibana 9.x, Logstash, Fluent Bit ile loglama yığınını kurar.
-   - Prometheus & Grafana ile metrik ve dashboard sistemini kurar.
-   - Tüm servisleri tek bir AWS Application Load Balancer (`shared-ingress`) arkasında birleştirir.
-   - Cloudflare API üzerinden aşağıdaki CNAME kayıtlarını otomatik olarak ALB adresine yönlendirir:
-     - `novashop.devopsatolyesi.com` ➔ NovaShop Web Storefront
-     - `elk.devopsatolyesi.com` ➔ Kibana (Log analiz ve arama)
-     - `grafana.devopsatolyesi.com` ➔ Grafana (Cluster ve JVM dashboard'ları)
-     - `prometheus.devopsatolyesi.com` ➔ Prometheus Metrikleri
-4. Eğitim bitince ilk altyapı workflow'unda (`01 - EKS Altyapısı (Terraform)`) `destroy` seçeneğini kullanarak kaynakları silin. EKS, NAT Gateway ve ALB ücretli kaynaklardır.
+```mermaid
+flowchart LR
+    A["01 - EKS Altyapısı (Terraform)"] --> B["02 - NovaShop Uygulama Dağıtımı"]
+    B --> C["03 - Monitoring & Logging Dağıtımı"]
+    
+    subgraph SG1 ["Aşama 1: Altyapı"]
+      A
+    end
+    subgraph SG2 ["Aşama 2: Uygulama"]
+      B
+    end
+    subgraph SG3 ["Aşama 3: Observability"]
+      C
+    end
+```
+
+### 1. Aşama: `01 - EKS Altyapısı (Terraform)`
+- **Tetikleme:** `workflow_dispatch` üzerinden `action: apply`.
+- **Otomatik Yapılanlar:**
+  - AWS VPC (2 Public, 2 Private Subnet, Tek NAT Gateway).
+  - EKS Cluster (Kubernetes v1.37.1) ve Managed Node Group (4 x `t3.small`).
+  - Pod kapasitesini node başına 11'den 44'e çıkaran **VPC-CNI Prefix Delegation** (`ENABLE_PREFIX_DELEGATION=true`).
+  - EKS Eklentileri: `vpc-cni`, `kube-proxy`, `coredns`, `eks-pod-identity-agent`, `metrics-server`.
+  - **AWS Load Balancer Controller** (IAM Rolü, Politika ve Helm Release otomatik kurulur).
+  - Private `novashop-ui` ECR deposu.
+
+### 2. Aşama: `02 - NovaShop EKS Uygulama Dağıtımı`
+- **Tetikleme:** `workflow_dispatch`.
+- **Otomatik Yapılanlar:**
+  - `src/ui` kodunu derler, Docker imajını oluşturur ve ECR'a gönderir.
+  - Helm ile `novashop` namespace'ine 5 mikroservisi dağıtır: `ui`, `catalog`, `cart`, `orders`, `checkout`.
+  - UI için Horizontal Pod Autoscaler (HPA) devreye girer (Min: 1, Max: 4 pod, %70 CPU eşiği).
+  - `devopsatolyesi-shared` Ingress grubuna dahil `novashop-ingress` oluşturulur.
+  - Paylaşımlı AWS Application Load Balancer (ALB) oluşturulmasını bekler ve `/actuator/health` kontrolüyle doğrular.
+
+### 3. Aşama: `03 - Monitoring & Logging Dağıtımı`
+- **Tetikleme:** `workflow_dispatch` üzerinden `action: apply`.
+- **Otomatik Yapılanlar:**
+  - `logging` ve `monitoring` namespace'lerini açar.
+  - **Elastic Stack 9 (ELK 9):**
+    - Elasticsearch 9.5.5 (StatefulSet, single-node, 350m heap, Hard PodAntiAffinity).
+    - Logstash 9.5.5 (Beats pipeline, 180m heap, Elasticsearch çıktısı).
+    - Fluent Bit 3.2.4 (Her node'da DaemonSet, container loglarını toplar ve Logstash'e iletir).
+    - Kibana 9.5.5 (768m old-space-size, Elasticsearch bağlantısı, Hard PodAntiAffinity).
+  - **Prometheus & Grafana:**
+    - Prometheus (K8s node, cadvisor ve servis metriklerini toplar).
+    - Grafana 11.5.2 (Datasource'lar: Prometheus & Elasticsearch; Hazır Dashboard: `NovaShop — Microservices RED & Business Overview`).
+  - **Paylaşımlı ALB Ingress:** Tüm izleme araçlarını tek bir ALB arkasında toplar.
+  - **Cloudflare DNS Senkronizasyonu:** Cloudflare APIv4 kullanarak aşağıdaki CNAME kayıtlarını otomatik oluşturur ve günceller:
+    - `novashop.devopsatolyesi.com` ➔ NovaShop Mağaza
+    - `elk.devopsatolyesi.com` ➔ Kibana Log Analizi
+    - `grafana.devopsatolyesi.com` ➔ Grafana Metrik Panoları
+    - `prometheus.devopsatolyesi.com` ➔ Prometheus Paneli
+
+---
+
+## 4. Servis Erişimleri ve Varsayılan Bilgiler
+
+| Servis Adı | Domain Adresi | Varsayılan Kullanıcı | Varsayılan Şifre | Açıklama |
+|---|---|---|---|---|
+| **NovaShop Store** | `http://novashop.devopsatolyesi.com` | - | - | E-ticaret ön yüzü ve mikroservis vitrini |
+| **Grafana** | `http://grafana.devopsatolyesi.com` | `admin` | `devops2026` | Metrik dashboard'ları (NovaShop hazır paneli yüklü) |
+| **Kibana (ELK 9)** | `http://elk.devopsatolyesi.com` | - | - | Merkezi loglama (`k8s-logs-*` veri görünümü) |
+| **Prometheus** | `http://prometheus.devopsatolyesi.com` | - | - | Ham metrik sorgulama ve target durumu |
+
+> [!NOTE]
+> **Paylaşımlı ALB Grubu:** Tüm servisler `alb.ingress.kubernetes.io/group.name: devopsatolyesi-shared` etiketini kullanır. AWS Load Balancer Controller bu sayede 4 farklı ALB açmak yerine **tek bir ALB** üzerinde host bazlı yönlendirme (routing rules) yapar; bu da Pluralsight bütçesinin aşılmasını engeller.
+
+---
+
+## 5. Laboratuvarı Temizleme (Tear Down)
+
+Eğitim veya çalışma tamamlandığında maliyet oluşmaması için:
+1. `03 - Monitoring & Logging Dağıtımı` workflow'unu `action: destroy` ile çalıştırarak monitoring kaynaklarını ve Ingress kurallarını kaldırın.
+2. `01 - EKS Altyapısı (Terraform)` workflow'unu `action: destroy` seçeneğiyle çalıştırarak EKS, NAT Gateway ve VPC bileşenlerini tamamen temizleyin.
 
 ## Güvenlik notu
 
