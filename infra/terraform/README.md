@@ -55,7 +55,7 @@ Repository **Settings → Secrets and variables → Actions** bölümünde aşa�
 | Secret | `CLOUDFLARE_ZONE_ID` | `devopsatolyesi.com` domainine ait Cloudflare Zone ID |
 | Variable | `BASE_DOMAIN` | Temel alan adı (Varsayılan: `devopsatolyesi.com`) |
 
-`EKS_CLUSTER_NAME`, `project=novashop` ve `environment=training` değerlerinden gelir. Bu değerleri değiştirirseniz workflow variable'ını da aynı isimle güncelleyin. Pluralsight ortamı büyük instance'lara izin vermediği için varsayılan node tipi `t3.small` seçilmiştir.
+`EKS_CLUSTER_NAME`, `project=novashop` ve `environment=training` değerlerinden gelir. Bu değerleri değiştirirseniz workflow variable'ını da aynı isimle güncelleyin. Pluralsight ortamında `t3.large` AWS Organization SCP (Service Control Policy) tarafından açıkça engellendiğinden (`Explicit Deny`), hem bütçe uyumluluğu hem de ELK 9 ve Prometheus iş yüklerinin rahat çalışabilmesi için varsayılan node tipi 4 GB bellekli **`t3.medium`** seçilmiştir.
 
 ## 3. Çalıştırma Sırası ve Sıfırdan Otomatik Kurulum (Clean Slate / Disaster Recovery)
 

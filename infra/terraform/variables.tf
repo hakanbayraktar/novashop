@@ -25,5 +25,5 @@ variable "kubernetes_version" {
 variable "node_instance_type" {
   description = "EKS managed-node-group instance type."
   type        = string
-  default     = "t3.small"
+  default     = "t3.medium"
 }
