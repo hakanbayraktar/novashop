@@ -50,17 +50,17 @@ spec:
               name: beats
           env:
             - name: LS_JAVA_OPTS
-              value: "-Xms180m -Xmx180m"
+              value: "-Xms256m -Xmx256m"
           volumeMounts:
             - name: config-volume
               mountPath: /usr/share/logstash/pipeline/
           resources:
             requests:
               cpu: "100m"
-              memory: "200Mi"
+              memory: "256Mi"
             limits:
-              cpu: "400m"
-              memory: "350Mi"
+              cpu: "500m"
+              memory: "700Mi"
       affinity:
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:

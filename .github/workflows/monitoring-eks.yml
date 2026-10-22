@@ -58,6 +58,22 @@ jobs:
           kubectl apply -f infra/monitoring/06-grafana.yaml
           kubectl apply -f infra/monitoring/07-shared-ingress.yaml
 
+      - name: Kibana Varsayılan Data View (k8s-logs-*) Oluştur
+        if: inputs.action == 'apply'
+        run: |
+          echo "Kibana podunun hazır olması bekleniyor..."
+          kubectl rollout status deployment/kibana -n logging --timeout=120s || true
+          KIBANA_POD=$(kubectl get pod -n logging -l app=kibana -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+          if [ -n "$KIBANA_POD" ]; then
+            echo "Kibana Data View (k8s-logs-*) tanımlanıyor..."
+            kubectl exec -n logging "$KIBANA_POD" -- curl -s -X POST "http://localhost:5601/api/data_views/data_view" \
+              -H 'kbn-xsrf: true' -H 'Content-Type: application/json' \
+              -d'{"data_view": {"id": "k8s-logs-default", "title": "k8s-logs-*", "name": "Kubernetes Logs", "timeFieldName": "@timestamp"}}' || true
+            kubectl exec -n logging "$KIBANA_POD" -- curl -s -X POST "http://localhost:5601/api/data_views/default" \
+              -H 'kbn-xsrf: true' -H 'Content-Type: application/json' \
+              -d'{"data_view_id": "k8s-logs-default"}' || true
+          fi
+
       - name: Paylaşımlı ALB Ingress adresini bekle
         if: inputs.action == 'apply'
         run: |
