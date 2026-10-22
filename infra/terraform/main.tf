@@ -56,10 +56,20 @@ module "eks" {
   control_plane_subnet_ids = module.vpc.private_subnets
 
   addons = {
-    coredns                = {}
-    kube-proxy             = {}
-    vpc-cni                = {}
-    eks-pod-identity-agent = {}
+    vpc-cni = {
+      before_compute = true
+      most_recent    = true
+    }
+    kube-proxy = {
+      most_recent = true
+    }
+    coredns = {
+      most_recent = true
+    }
+    eks-pod-identity-agent = {
+      before_compute = true
+      most_recent    = true
+    }
   }
 
   eks_managed_node_groups = {
