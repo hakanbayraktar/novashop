@@ -86,7 +86,7 @@ module "eks" {
       instance_types = [var.node_instance_type]
       min_size       = 2
       max_size       = 5
-      desired_size   = 3
+      desired_size   = 4
       capacity_type  = "ON_DEMAND"
 
       iam_role_additional_policies = {
