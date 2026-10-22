@@ -67,11 +67,14 @@ jobs:
             ALB_HOST=$(kubectl get ingress novashop-ingress -n novashop \
               -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
             if [ -n "$ALB_HOST" ]; then
-              curl --fail --retry 5 "http://$ALB_HOST/actuator/health"
-              echo "ALB_URL=http://$ALB_HOST" >> "$GITHUB_STEP_SUMMARY"
-              exit 0
+              if curl -fsSL --retry 3 "http://$ALB_HOST/actuator/health" > /dev/null 2>&1; then
+                echo "ALB_URL=http://$ALB_HOST" >> "$GITHUB_STEP_SUMMARY"
+                echo "Uygulama başarıyla erişilebilir: http://$ALB_HOST"
+                exit 0
+              fi
             fi
+            echo "ALB veya DNS henüz hazır değil, bekleniyor ($attempt/30)..."
             sleep 10
           done
-          echo "ALB adresi zamanında atanmadı." >&2
+          echo "ALB adresi zamanında atanmadı veya erişilemedi." >&2
           exit 1
