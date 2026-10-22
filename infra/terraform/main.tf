@@ -55,7 +55,7 @@ module "eks" {
   subnet_ids               = module.vpc.private_subnets
   control_plane_subnet_ids = module.vpc.private_subnets
 
-  cluster_addons = {
+  addons = {
     coredns                = {}
     kube-proxy             = {}
     vpc-cni                = {}
