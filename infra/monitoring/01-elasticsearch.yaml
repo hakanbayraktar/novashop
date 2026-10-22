@@ -42,18 +42,16 @@ spec:
               memory: "384Mi"
             limits:
               cpu: "600m"
-              memory: "650Mi"
+              memory: "700Mi"
       affinity:
         podAntiAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              podAffinityTerm:
-                labelSelector:
-                  matchExpressions:
-                    - key: app
-                      operator: In
-                      values: ["kibana", "logstash"]
-                topologyKey: "kubernetes.io/hostname"
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values: ["kibana"]
+              topologyKey: "kubernetes.io/hostname"
       volumes:
         - name: es-data
           emptyDir: {}

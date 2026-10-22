@@ -70,7 +70,7 @@ spec:
                   matchExpressions:
                     - key: app
                       operator: In
-                      values: ["elasticsearch", "kibana"]
+                      values: ["kibana"]
                 topologyKey: "kubernetes.io/hostname"
       volumes:
         - name: config-volume

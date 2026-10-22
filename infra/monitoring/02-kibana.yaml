@@ -25,25 +25,23 @@ spec:
             - name: ELASTICSEARCH_HOSTS
               value: "http://elasticsearch.logging.svc.cluster.local:9200"
             - name: NODE_OPTIONS
-              value: "--max-old-space-size=384"
+              value: "--max-old-space-size=768"
           resources:
             requests:
-              cpu: "100m"
-              memory: "350Mi"
+              cpu: "150m"
+              memory: "512Mi"
             limits:
-              cpu: "500m"
-              memory: "600Mi"
+              cpu: "800m"
+              memory: "1100Mi"
       affinity:
         podAntiAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              podAffinityTerm:
-                labelSelector:
-                  matchExpressions:
-                    - key: app
-                      operator: In
-                      values: ["elasticsearch", "logstash"]
-                topologyKey: "kubernetes.io/hostname"
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values: ["elasticsearch"]
+              topologyKey: "kubernetes.io/hostname"
 ---
 apiVersion: v1
 kind: Service
