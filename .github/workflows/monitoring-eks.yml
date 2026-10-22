@@ -1,0 +1,132 @@
+name: "03 - Monitoring & Logging Dağıtımı"
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "İşlem türü"
+        type: choice
+        required: true
+        default: apply
+        options: [apply, destroy]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: novashop-eks-monitoring-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  monitoring:
+    runs-on: ubuntu-latest
+    environment: eks-training
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
+      BASE_DOMAIN: ${{ vars.BASE_DOMAIN || 'devopsatolyesi.com' }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID || vars.CLOUDFLARE_ZONE_ID }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: AWS access key kimlik doğrulaması
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: NovaShopMonitoring
+
+      - name: EKS kubeconfig oluştur
+        run: aws eks update-kubeconfig --region "$AWS_REGION" --name "$CLUSTER_NAME"
+
+      - name: Monitoring ve Logging bileşenlerini sil (Destroy)
+        if: inputs.action == 'destroy'
+        run: |
+          kubectl delete -f infra/monitoring/ --ignore-not-found=true
+
+      - name: Monitoring ve Logging bileşenlerini kur (Apply)
+        if: inputs.action == 'apply'
+        run: |
+          kubectl apply -f infra/monitoring/00-namespaces.yaml
+          kubectl apply -f infra/monitoring/01-elasticsearch.yaml
+          kubectl apply -f infra/monitoring/02-kibana.yaml
+          kubectl apply -f infra/monitoring/03-logstash.yaml
+          kubectl apply -f infra/monitoring/04-fluent-bit.yaml
+          kubectl apply -f infra/monitoring/05-prometheus.yaml
+          kubectl apply -f infra/monitoring/06-grafana.yaml
+          kubectl apply -f infra/monitoring/07-shared-ingress.yaml
+
+      - name: Paylaşımlı ALB Ingress adresini bekle
+        if: inputs.action == 'apply'
+        run: |
+          echo "Paylaşımlı ALB adresi kontrol ediliyor..."
+          for i in {1..30}; do
+            ALB_HOST=$(kubectl get ingress -n logging elk-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
+            if [ -z "$ALB_HOST" ]; then
+              ALB_HOST=$(kubectl get ingress -n novashop novashop-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
+            fi
+            if [ -n "$ALB_HOST" ]; then
+              echo "ALB_HOST=$ALB_HOST" >> "$GITHUB_ENV"
+              echo "ALB Host: $ALB_HOST"
+              break
+            fi
+            echo "ALB henüz atanmadı, bekleniyor ($i/30)..."
+            sleep 10
+          done
+
+      - name: Cloudflare DNS Kayıtlarını Senkronize Et
+        if: inputs.action == 'apply'
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ZONE_ID" ]; then
+            echo "::warning::CLOUDFLARE_API_TOKEN veya CLOUDFLARE_ZONE_ID secret'ı tanımlanmamış. DNS güncellemesi atlandı."
+            exit 0
+          fi
+
+          if [ -z "$ALB_HOST" ]; then
+            echo "::error::ALB Host adresi bulunamadı."
+            exit 1
+          fi
+
+          DOMAINS=("novashop" "elk" "grafana" "prometheus")
+          echo "Cloudflare DNS kayıtları güncelleniyor -> $ALB_HOST"
+
+          for sub in "${DOMAINS[@]}"; do
+            RECORD_NAME="$sub.$BASE_DOMAIN"
+            echo "--- $RECORD_NAME işleniyor ---"
+
+            RECORD_ID=$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/dns_records?type=CNAME&name=$RECORD_NAME" \
+              -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+              -H "Content-Type: application/json" | jq -r '.result[0].id // empty')
+
+            if [ -n "$RECORD_ID" ]; then
+              echo "Mevcut CNAME güncelleniyor: $RECORD_NAME"
+              curl -s -X PUT "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/dns_records/$RECORD_ID" \
+                -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+                -H "Content-Type: application/json" \
+                --data "{\"type\":\"CNAME\",\"name\":\"$RECORD_NAME\",\"content\":\"$ALB_HOST\",\"ttl\":1,\"proxied\":false}" | jq -r '.success'
+            else
+              echo "Yeni CNAME ekleniyor: $RECORD_NAME"
+              curl -s -X POST "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/dns_records" \
+                -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+                -H "Content-Type: application/json" \
+                --data "{\"type\":\"CNAME\",\"name\":\"$RECORD_NAME\",\"content\":\"$ALB_HOST\",\"ttl\":1,\"proxied\":false}" | jq -r '.success'
+            fi
+          done
+
+      - name: Özet ve Erişim Linkleri
+        if: inputs.action == 'apply'
+        run: |
+          cat <<EOF >> "$GITHUB_STEP_SUMMARY"
+          ## 🚀 NovaShop Monitoring ve Logging Dağıtımı Tamamlandı
+
+          ### Servis Erişim Linkleri:
+          - **NovaShop Uygulaması:** [http://novashop.$BASE_DOMAIN](http://novashop.$BASE_DOMAIN)
+          - **Kibana (ELK 9):** [http://elk.$BASE_DOMAIN](http://elk.$BASE_DOMAIN)
+          - **Grafana Paneli:** [http://grafana.$BASE_DOMAIN](http://grafana.$BASE_DOMAIN) (Kullanıcı: \`admin\` / Şifre: \`devops2026\`)
+          - **Prometheus:** [http://prometheus.$BASE_DOMAIN](http://prometheus.$BASE_DOMAIN)
+
+          ### AWS ALB Doğrudan Adresi:
+          - \`http://$ALB_HOST\`
+          EOF

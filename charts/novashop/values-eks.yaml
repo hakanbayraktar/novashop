@@ -37,11 +37,19 @@ ingress:
   className: alb
   annotations:
     kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/group.name: devopsatolyesi-shared
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
     alb.ingress.kubernetes.io/healthcheck-path: /actuator/health
   hosts:
+    - host: "novashop.devopsatolyesi.com"
+      paths:
+        - path: /
+          pathType: Prefix
+          service:
+            name: novashop-ui
+            port: 8080
     - host: ""
       paths:
         - path: /
