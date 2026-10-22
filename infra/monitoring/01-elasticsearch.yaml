@@ -28,7 +28,7 @@ spec:
             - name: discovery.type
               value: "single-node"
             - name: ES_JAVA_OPTS
-              value: "-Xms512m -Xmx512m"
+              value: "-Xms350m -Xmx350m"
             - name: xpack.security.enabled
               value: "false"
             - name: xpack.security.http.ssl.enabled
@@ -38,11 +38,22 @@ spec:
               mountPath: /usr/share/elasticsearch/data
           resources:
             requests:
-              cpu: "200m"
-              memory: "512Mi"
+              cpu: "150m"
+              memory: "384Mi"
             limits:
-              cpu: "800m"
-              memory: "1Gi"
+              cpu: "600m"
+              memory: "650Mi"
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values: ["kibana", "logstash"]
+                topologyKey: "kubernetes.io/hostname"
       volumes:
         - name: es-data
           emptyDir: {}

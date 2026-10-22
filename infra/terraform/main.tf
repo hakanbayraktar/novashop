@@ -59,6 +59,12 @@ module "eks" {
     vpc-cni = {
       before_compute = true
       most_recent    = true
+      configuration_values = jsonencode({
+        env = {
+          ENABLE_PREFIX_DELEGATION = "true"
+          WARM_PREFIX_TARGET       = "1"
+        }
+      })
     }
     kube-proxy = {
       most_recent = true
