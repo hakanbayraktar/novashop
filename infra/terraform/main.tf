@@ -2,10 +2,6 @@ data "aws_availability_zones" "available" {
   state = "available"
 }
 
-data "aws_eks_cluster_auth" "this" {
-  name = module.eks.cluster_name
-}
-
 locals {
   name = "${var.project}-${var.environment}"
   azs  = slice(data.aws_availability_zones.available.names, 0, 2)
@@ -147,23 +143,4 @@ resource "aws_iam_role" "aws_load_balancer_controller" {
 resource "aws_iam_role_policy_attachment" "aws_load_balancer_controller" {
   role       = aws_iam_role.aws_load_balancer_controller.name
   policy_arn = aws_iam_policy.aws_load_balancer_controller.arn
-}
-
-resource "helm_release" "aws_load_balancer_controller" {
-  name       = "aws-load-balancer-controller"
-  repository = "https://aws.github.io/eks-charts"
-  chart      = "aws-load-balancer-controller"
-  namespace  = "kube-system"
-  version    = "1.14.0"
-
-  set = [
-    { name = "clusterName", value = module.eks.cluster_name },
-    { name = "region", value = var.aws_region },
-    { name = "vpcId", value = module.vpc.vpc_id },
-    { name = "serviceAccount.create", value = "true" },
-    { name = "serviceAccount.name", value = "aws-load-balancer-controller" },
-    { name = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn", value = aws_iam_role.aws_load_balancer_controller.arn }
-  ]
-
-  depends_on = [aws_iam_role_policy_attachment.aws_load_balancer_controller]
 }
