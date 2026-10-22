@@ -24,13 +24,15 @@ spec:
           env:
             - name: ELASTICSEARCH_HOSTS
               value: "http://elasticsearch.logging.svc.cluster.local:9200"
+            - name: NODE_OPTIONS
+              value: "--max-old-space-size=768"
           resources:
             requests:
               cpu: "150m"
-              memory: "384Mi"
+              memory: "512Mi"
             limits:
               cpu: "500m"
-              memory: "768Mi"
+              memory: "1Gi"
 ---
 apiVersion: v1
 kind: Service
