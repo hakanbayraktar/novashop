@@ -70,13 +70,16 @@ module "eks" {
       before_compute = true
       most_recent    = true
     }
+    metrics-server = {
+      most_recent = true
+    }
   }
 
   eks_managed_node_groups = {
     default = {
       instance_types = [var.node_instance_type]
-      min_size       = 1
-      max_size       = 3
+      min_size       = 2
+      max_size       = 5
       desired_size   = 2
       capacity_type  = "ON_DEMAND"
 
